@@ -54,9 +54,6 @@ async function init() {
     updateListNamePlaceholder();
   });
 
-  const savedReservationName = localStorage.getItem('almorzeitor-name');
-  if (savedReservationName) $('reservation-name').value = savedReservationName;
-
   appConfig.bars.forEach(bar => {
     const opt = document.createElement('option');
     opt.value = bar.id;
@@ -153,6 +150,11 @@ async function createList() {
   const lunchHour = parseInt($('lunch-hour').value) || 10;
   const lunchMinute = parseInt($('lunch-minute').value) || 0;
   const reservationName = $('reservation-name').value.trim();
+  if (!reservationName) {
+    toast('Escribe a nombre de quién va la reserva');
+    $('reservation-name').focus();
+    return;
+  }
 
   try {
     currentList = await api('/api/list', {
