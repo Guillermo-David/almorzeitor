@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Almorzeitor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>🥖 Almorzeitor</h1>
+  </header>
+
+  <main id="app">
+    <!-- Vista: No hay lista activa -->
+    <section id="view-no-list" class="view hidden">
+      <p class="empty-state">No hay ninguna lista de almuerzo activa.</p>
+      <button id="btn-show-create" class="btn btn-primary">Crear lista</button>
+
+      <div id="create-form" class="card hidden">
+        <h2>Nueva lista</h2>
+        <div class="form-group">
+          <label for="list-name">Nombre</label>
+          <input type="text" id="list-name" placeholder="">
+        </div>
+        <div class="form-group">
+          <label for="list-bar">Bar</label>
+          <select id="list-bar"></select>
+        </div>
+        <div class="form-group">
+          <label for="reservation-name">Reserva a nombre de</label>
+          <input type="text" id="reservation-name" placeholder="Ej: Guillermo">
+        </div>
+        <div class="form-group">
+          <label>Fecha y hora del almuerzo</label>
+          <div class="datetime-row">
+            <input type="date" id="lunch-date">
+            <div class="time-inputs">
+              <input type="number" id="lunch-hour" min="0" max="23" value="10">
+              <span>:</span>
+              <input type="number" id="lunch-minute" min="0" max="59" value="00" step="5">
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Límite para apuntarse</label>
+          <div class="datetime-row">
+            <input type="date" id="deadline-date">
+            <div class="time-inputs">
+              <input type="number" id="deadline-hour" min="0" max="23" value="9">
+              <span>:</span>
+              <input type="number" id="deadline-minute" min="0" max="59" value="00" step="5">
+            </div>
+          </div>
+        </div>
+        <button id="btn-create-list" class="btn btn-primary">Crear</button>
+        <button id="btn-cancel-create" class="btn btn-secondary">Cancelar</button>
+      </div>
+    </section>
+
+    <!-- Vista: Lista activa -->
+    <section id="view-list" class="view hidden">
+      <div class="card list-header">
+        <h2 id="list-title"></h2>
+        <div class="list-meta">
+          <span id="list-bar-name" class="badge"></span>
+          <span id="list-lunch-info" class="badge"></span>
+          <span id="list-reservation-name" class="badge"></span>
+          <span id="list-deadline" class="badge"></span>
+          <span id="list-status" class="badge"></span>
+        </div>
+      </div>
+
+      <!-- Formulario para apuntarse -->
+      <div id="entry-form" class="card">
+        <h3>Apúntate</h3>
+        <div class="form-group">
+          <label for="person-name">Tu nombre</label>
+          <input type="text" id="person-name" placeholder="Ej: Guillermo">
+        </div>
+        <div class="form-group">
+          <label>Elige bocadillo</label>
+          <div id="menu-options" class="menu-grid"></div>
+        </div>
+        <div class="form-group">
+          <label for="custom-item">...o escribe algo personalizado</label>
+          <input type="text" id="custom-item" placeholder="Ej: Tortilla con longaniza">
+        </div>
+        <p class="hint">Puedes dejar ambos vacíos si solo quieres reservar sitio.</p>
+        <button id="btn-add-entry" class="btn btn-primary">Apuntarme</button>
+      </div>
+
+      <!-- Lista de apuntados -->
+      <div class="card">
+        <h3>Apuntados (<span id="entry-count">0</span>)</h3>
+        <div id="entries-list" class="entries-list"></div>
+        <p id="entries-empty" class="empty-state">Nadie apuntado todavía.</p>
+      </div>
+
+      <!-- Acciones -->
+      <div class="card actions">
+        <button id="btn-whatsapp" class="btn btn-whatsapp">📱 Enviar pedido por WhatsApp</button>
+        <button id="btn-copy" class="btn btn-secondary">📋 Copiar resumen</button>
+        <button id="btn-delete-list" class="btn btn-danger">Cerrar lista</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
