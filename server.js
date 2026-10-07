@@ -83,7 +83,7 @@ app.post('/api/list', (req, res) => {
   };
 
   lists.set(id, list);
-  res.status(201).json({ ...list, open: true });
+  res.status(201).json({ ...list, open: isListOpen(list) });
 });
 
 // Delete list
