@@ -56,24 +56,12 @@ app.get('/api/list/:id', (req, res) => {
 
 // Create new list
 app.post('/api/list', (req, res) => {
-  const { name, barId, deadlineDate, deadlineHour, deadlineMinute, lunchDate, lunchHour, lunchMinute, reservationName } = req.body;
+  const { name, barId, deadlineISO, lunchDate, lunchHour, lunchMinute, reservationName } = req.body;
   const bar = getBar(barId || config.defaultBarId);
   if (!bar) return res.status(400).json({ error: 'Bar no encontrado' });
 
-  const hour = deadlineHour ?? config.defaultDeadlineHour;
-  const minute = deadlineMinute ?? config.defaultDeadlineMinute;
-
   const now = new Date();
-  let deadline;
-  if (deadlineDate) {
-    const [y, m, d] = deadlineDate.split('-').map(Number);
-    deadline = new Date(y, m - 1, d, hour, minute, 0);
-  } else {
-    deadline = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0);
-    if (deadline <= now) {
-      deadline.setDate(deadline.getDate() + 1);
-    }
-  }
+  const deadline = deadlineISO ? new Date(deadlineISO) : new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
   const id = generateId();
   const list = {

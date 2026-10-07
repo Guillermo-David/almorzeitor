@@ -144,8 +144,10 @@ async function createList() {
   const name = listName.value.trim();
   const barId = listBar.value;
   const deadlineDateVal = $('deadline-date').value;
-  const hour = parseInt(deadlineHour.value) || 9;
-  const minute = parseInt(deadlineMinute.value) || 0;
+  const dHour = parseInt(deadlineHour.value) || 8;
+  const dMinute = parseInt(deadlineMinute.value) || 30;
+  const [dY, dM, dD] = deadlineDateVal.split('-').map(Number);
+  const deadlineISO = new Date(dY, dM - 1, dD, dHour, dMinute, 0).toISOString();
   const lunchDate = $('lunch-date').value;
   const lunchHour = parseInt($('lunch-hour').value) || 10;
   const lunchMinute = parseInt($('lunch-minute').value) || 0;
@@ -159,7 +161,7 @@ async function createList() {
   try {
     currentList = await api('/api/list', {
       method: 'POST',
-      body: JSON.stringify({ name, barId, deadlineDate: deadlineDateVal, deadlineHour: hour, deadlineMinute: minute, lunchDate, lunchHour, lunchMinute, reservationName }),
+      body: JSON.stringify({ name, barId, deadlineISO, lunchDate, lunchHour, lunchMinute, reservationName }),
     });
     listName.value = '';
     createForm.classList.add('hidden');
