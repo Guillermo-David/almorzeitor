@@ -334,6 +334,12 @@ input:focus, select:focus {
   margin-bottom: 8px;
 }
 
+.list-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .list-card-title {
   font-weight: 700;
   font-size: 1.05rem;
