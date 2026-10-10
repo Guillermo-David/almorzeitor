@@ -1,12 +1,13 @@
 const API = '';
 let appConfig = null;
 let currentList = null;
+let currentListId = null;
 let selectedMenuItemId = null;
 let pollInterval = null;
 
 // --- DOM refs ---
 const $ = id => document.getElementById(id);
-const viewNoList = $('view-no-list');
+const viewLanding = $('view-landing');
 const viewList = $('view-list');
 const createForm = $('create-form');
 const btnShowCreate = $('btn-show-create');
@@ -33,6 +34,28 @@ const entryCount = $('entry-count');
 const btnWhatsapp = $('btn-whatsapp');
 const btnCopy = $('btn-copy');
 const btnDeleteList = $('btn-delete-list');
+const btnShare = $('btn-share');
+const btnBack = $('btn-back');
+const listsContainer = $('lists-container');
+const codeModal = $('code-modal');
+const codeInput = $('code-input');
+const btnCodeSubmit = $('btn-code-submit');
+const btnCodeCancel = $('btn-code-cancel');
+const codeError = $('code-error');
+const headerTitle = $('header-title');
+
+// --- Access codes stored per list in sessionStorage ---
+function getStoredCode(listId) {
+  try { return sessionStorage.getItem('code-' + listId) || ''; } catch { return ''; }
+}
+function storeCode(listId, code) {
+  try { sessionStorage.setItem('code-' + listId, code); } catch {}
+}
+
+function accessHeaders(listId) {
+  const code = getStoredCode(listId || currentListId);
+  return code ? { 'X-Access-Code': code } : {};
+}
 
 // --- Init ---
 async function init() {
@@ -44,7 +67,6 @@ async function init() {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = tomorrow.toISOString().split('T')[0];
-  const todayStr = today.toISOString().split('T')[0];
   $('lunch-date').value = tomorrowStr;
   $('deadline-date').value = tomorrowStr;
   updateListNamePlaceholder();
@@ -64,37 +86,83 @@ async function init() {
   const savedName = localStorage.getItem('almorzeitor-name');
   if (savedName) personName.value = savedName;
 
-  btnShowCreate.addEventListener('click', () => {
-    createForm.classList.toggle('hidden');
-  });
-  btnCancelCreate.addEventListener('click', () => {
-    createForm.classList.add('hidden');
-  });
+  btnShowCreate.addEventListener('click', () => createForm.classList.toggle('hidden'));
+  btnCancelCreate.addEventListener('click', () => createForm.classList.add('hidden'));
   btnCreateList.addEventListener('click', createList);
   btnAddEntry.addEventListener('click', addEntry);
   btnWhatsapp.addEventListener('click', sendWhatsapp);
   btnCopy.addEventListener('click', copyToClipboard);
   btnDeleteList.addEventListener('click', deleteList);
+  btnShare.addEventListener('click', shareLink);
+  btnBack.addEventListener('click', navigateToLanding);
+  headerTitle.addEventListener('click', navigateToLanding);
+  headerTitle.style.cursor = 'pointer';
 
-  customItem.addEventListener('input', () => {
-    if (customItem.value.trim()) {
-      clearMenuSelection();
-    }
+  $('btn-edit').addEventListener('click', openEditModal);
+  $('btn-edit-save').addEventListener('click', saveEdit);
+  $('btn-edit-cancel').addEventListener('click', () => $('edit-modal').classList.add('hidden'));
+
+  btnCodeSubmit.addEventListener('click', submitAccessCode);
+  btnCodeCancel.addEventListener('click', () => {
+    codeModal.classList.add('hidden');
+    pendingListId = null;
+    navigateToLanding();
+  });
+  codeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitAccessCode();
   });
 
-  await loadActiveList();
+  customItem.addEventListener('input', () => {
+    if (customItem.value.trim()) clearMenuSelection();
+  });
+
+  route();
+}
+
+// --- Routing ---
+function getListIdFromUrl() {
+  const match = window.location.pathname.match(/^\/lista\/(.+)$/);
+  return match ? match[1] : null;
+}
+
+function navigateToList(listId) {
+  history.pushState(null, '', '/lista/' + listId);
+  currentListId = listId;
+  currentList = null;
+  loadList();
   startPolling();
 }
 
+function navigateToLanding() {
+  history.pushState(null, '', '/');
+  currentListId = null;
+  currentList = null;
+  showView('landing');
+  loadLists();
+  startPolling();
+}
+
+function route() {
+  const listId = getListIdFromUrl();
+  if (listId) {
+    currentListId = listId;
+    loadList();
+  } else {
+    showView('landing');
+    loadLists();
+  }
+  startPolling();
+}
+
+window.addEventListener('popstate', route);
+
 // --- API helper ---
 async function api(url, options = {}) {
-  const res = await fetch(API + url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  const res = await fetch(API + url, { ...options, headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Error de red' }));
-    throw new Error(err.error || 'Error');
+    throw err;
   }
   return res.json();
 }
@@ -102,28 +170,122 @@ async function api(url, options = {}) {
 // --- Polling ---
 function startPolling() {
   if (pollInterval) clearInterval(pollInterval);
-  pollInterval = setInterval(loadActiveList, 10000);
+  pollInterval = setInterval(() => {
+    if (currentListId) loadList();
+    else loadLists();
+  }, 10000);
+}
+
+// --- Landing: List of lists ---
+let cachedListsJson = null;
+
+async function loadLists() {
+  try {
+    const lists = await api('/api/lists');
+    const json = JSON.stringify(lists);
+    if (json === cachedListsJson) return;
+    cachedListsJson = json;
+    renderLists(lists);
+  } catch {
+    // silent
+  }
+}
+
+function renderLists(lists) {
+  showView('landing');
+  listsContainer.innerHTML = '';
+
+  if (lists.length === 0) {
+    listsContainer.innerHTML = '<p class="empty-state">No hay listas activas. ¡Crea una!</p>';
+    return;
+  }
+
+  lists.forEach(list => {
+    const card = document.createElement('div');
+    card.className = 'card list-card';
+    card.addEventListener('click', () => openList(list));
+
+    const lunchDate = new Date(list.lunchDate + 'T00:00:00');
+    const lunchTime = `${String(list.lunchHour).padStart(2, '0')}:${String(list.lunchMinute).padStart(2, '0')}`;
+    const dateStr = lunchDate.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+    const peopleLabel = list.entryCount === 1 ? '1 persona' : `${list.entryCount} personas`;
+
+    card.innerHTML = `
+      <div class="list-card-header">
+        <span class="list-card-title">${escapeHtml(list.name)}</span>
+        ${list.hasCode ? '<span class="list-card-lock">🔒</span>' : ''}
+      </div>
+      <div class="list-card-info">
+        <span>${dateStr} a las ${lunchTime}</span>
+        <span>${list.barName}</span>
+        ${list.reservationName ? `<span>👤 ${escapeHtml(list.reservationName)}</span>` : ''}
+        <span>${peopleLabel}</span>
+        <span class="badge ${list.open ? 'badge-open' : 'badge-closed'}">${list.open ? 'Abierta' : 'Cerrada'}</span>
+      </div>
+    `;
+
+    listsContainer.appendChild(card);
+  });
+}
+
+// --- Access code modal ---
+let pendingListId = null;
+
+function openList(list) {
+  if (list.hasCode && !getStoredCode(list.id)) {
+    pendingListId = list.id;
+    codeModal.classList.remove('hidden');
+    codeError.classList.add('hidden');
+    codeInput.value = '';
+    codeInput.focus();
+  } else {
+    navigateToList(list.id);
+  }
+}
+
+async function submitAccessCode() {
+  const code = codeInput.value.trim();
+  if (!code) return;
+  try {
+    await api(`/api/list/${pendingListId}/access`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+    storeCode(pendingListId, code);
+    codeModal.classList.add('hidden');
+    navigateToList(pendingListId);
+    pendingListId = null;
+  } catch {
+    codeError.classList.remove('hidden');
+  }
 }
 
 // --- List management ---
-async function loadActiveList() {
+async function loadList() {
+  if (!currentListId) return;
   try {
-    const list = await api('/api/list/active');
-    if (list) {
-      const changed = !currentList
-        || currentList.id !== list.id
-        || currentList.entries.length !== list.entries.length
-        || JSON.stringify(currentList.entries) !== JSON.stringify(list.entries)
-        || currentList.open !== list.open;
-      currentList = list;
-      if (changed) renderList();
-      else showView('list');
-    } else {
-      currentList = null;
-      showView('no-list');
+    const list = await api(`/api/list/${currentListId}`, {
+      headers: accessHeaders(currentListId),
+    });
+    const changed = !currentList
+      || currentList.id !== list.id
+      || currentList.entries.length !== list.entries.length
+      || JSON.stringify(currentList.entries) !== JSON.stringify(list.entries)
+      || currentList.open !== list.open;
+    currentList = list;
+    if (changed) renderList();
+    else showView('list');
+  } catch (e) {
+    if (e.needsCode) {
+      pendingListId = currentListId;
+      codeModal.classList.remove('hidden');
+      codeError.classList.add('hidden');
+      codeInput.value = '';
+      codeInput.focus();
+    } else if (e.error === 'Lista no encontrada') {
+      toast('La lista ya no existe');
+      navigateToLanding();
     }
-  } catch {
-    // silent
   }
 }
 
@@ -152,6 +314,7 @@ async function createList() {
   const lunchHour = parseInt($('lunch-hour').value) || 10;
   const lunchMinute = parseInt($('lunch-minute').value) || 0;
   const reservationName = $('reservation-name').value.trim();
+  const accessCode = $('access-code').value.trim();
   if (!reservationName) {
     toast('Escribe a nombre de quién va la reserva');
     $('reservation-name').focus();
@@ -159,16 +322,64 @@ async function createList() {
   }
 
   try {
-    currentList = await api('/api/list', {
+    const list = await api('/api/list', {
       method: 'POST',
-      body: JSON.stringify({ name, barId, deadlineISO, lunchDate, lunchHour, lunchMinute, reservationName }),
+      body: JSON.stringify({ name, barId, deadlineISO, lunchDate, lunchHour, lunchMinute, reservationName, accessCode }),
     });
+    if (accessCode) storeCode(list.id, accessCode);
     listName.value = '';
+    $('access-code').value = '';
+    $('reservation-name').value = '';
     createForm.classList.add('hidden');
-    renderList();
     toast('Lista creada');
+    navigateToList(list.id);
   } catch (e) {
-    toast(e.message);
+    toast(e.error || e.message);
+  }
+}
+
+// --- Edit list ---
+function openEditModal() {
+  if (!currentList || !currentList.open) return;
+  $('edit-name').value = currentList.name;
+  $('edit-reservation').value = currentList.reservationName || '';
+  $('edit-lunch-date').value = currentList.lunchDate;
+  $('edit-lunch-hour').value = currentList.lunchHour;
+  $('edit-lunch-minute').value = String(currentList.lunchMinute).padStart(2, '0');
+  const deadline = new Date(currentList.deadline);
+  $('edit-deadline-date').value = `${deadline.getFullYear()}-${String(deadline.getMonth() + 1).padStart(2, '0')}-${String(deadline.getDate()).padStart(2, '0')}`;
+  $('edit-deadline-hour').value = deadline.getHours();
+  $('edit-deadline-minute').value = String(deadline.getMinutes()).padStart(2, '0');
+  $('edit-modal').classList.remove('hidden');
+}
+
+async function saveEdit() {
+  const name = $('edit-name').value.trim();
+  const reservationName = $('edit-reservation').value.trim();
+  if (!reservationName) {
+    toast('Escribe a nombre de quién va la reserva');
+    return;
+  }
+  const lunchDate = $('edit-lunch-date').value;
+  const lunchHour = parseInt($('edit-lunch-hour').value) || 10;
+  const lunchMinute = parseInt($('edit-lunch-minute').value) || 0;
+  const dDate = $('edit-deadline-date').value;
+  const dHour = parseInt($('edit-deadline-hour').value) || 8;
+  const dMinute = parseInt($('edit-deadline-minute').value) || 30;
+  const [dY, dM, dD] = dDate.split('-').map(Number);
+  const deadlineISO = new Date(dY, dM - 1, dD, dHour, dMinute, 0).toISOString();
+
+  try {
+    currentList = await api(`/api/list/${currentList.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, reservationName, lunchDate, lunchHour, lunchMinute, deadlineISO }),
+      headers: accessHeaders(),
+    });
+    $('edit-modal').classList.add('hidden');
+    renderList();
+    toast('Lista actualizada');
+  } catch (e) {
+    toast(e.error || e.message);
   }
 }
 
@@ -176,12 +387,15 @@ async function deleteList() {
   if (!currentList) return;
   if (!confirm('¿Cerrar esta lista? Se perderán los datos.')) return;
   try {
-    await api(`/api/list/${currentList.id}`, { method: 'DELETE' });
+    await api(`/api/list/${currentList.id}`, {
+      method: 'DELETE',
+      headers: accessHeaders(),
+    });
     currentList = null;
-    showView('no-list');
     toast('Lista eliminada');
+    navigateToLanding();
   } catch (e) {
-    toast(e.message);
+    toast(e.error || e.message);
   }
 }
 
@@ -208,13 +422,14 @@ async function addEntry() {
     currentList = await api(`/api/list/${currentList.id}/entry`, {
       method: 'POST',
       body: JSON.stringify(body),
+      headers: accessHeaders(),
     });
     customItem.value = '';
     clearMenuSelection();
     renderList();
     toast('¡Apuntado!');
   } catch (e) {
-    toast(e.message);
+    toast(e.error || e.message);
   }
 }
 
@@ -223,11 +438,12 @@ async function removeEntry(name) {
   try {
     currentList = await api(`/api/list/${currentList.id}/entry/${encodeURIComponent(name)}`, {
       method: 'DELETE',
+      headers: accessHeaders(),
     });
     renderList();
     toast('Eliminado');
   } catch (e) {
-    toast(e.message);
+    toast(e.error || e.message);
   }
 }
 
@@ -235,27 +451,42 @@ async function removeEntry(name) {
 async function sendWhatsapp() {
   if (!currentList) return;
   try {
-    const data = await api(`/api/list/${currentList.id}/whatsapp`);
+    const data = await api(`/api/list/${currentList.id}/whatsapp`, {
+      headers: accessHeaders(),
+    });
     window.location.href = data.whatsappDirect;
   } catch (e) {
-    toast(e.message);
+    toast(e.error || e.message);
   }
 }
 
 async function copyToClipboard() {
   if (!currentList) return;
   try {
-    const data = await api(`/api/list/${currentList.id}/whatsapp`);
+    const data = await api(`/api/list/${currentList.id}/whatsapp`, {
+      headers: accessHeaders(),
+    });
     await navigator.clipboard.writeText(data.message);
     toast('Copiado al portapapeles');
   } catch (e) {
-    toast(e.message);
+    toast(e.error || e.message);
+  }
+}
+
+// --- Share ---
+function shareLink() {
+  if (!currentList) return;
+  const url = window.location.origin + '/lista/' + currentList.id;
+  if (navigator.share) {
+    navigator.share({ title: currentList.name, url }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(url).then(() => toast('Enlace copiado')).catch(() => toast('No se pudo copiar'));
   }
 }
 
 // --- Rendering ---
 function showView(name) {
-  viewNoList.classList.toggle('hidden', name !== 'no-list');
+  viewLanding.classList.toggle('hidden', name !== 'landing');
   viewList.classList.toggle('hidden', name !== 'list');
 }
 
@@ -300,6 +531,7 @@ function renderList() {
   listStatus.className = `badge ${open ? 'badge-open' : 'badge-closed'}`;
 
   entryForm.classList.toggle('hidden', !open);
+  $('btn-edit').classList.toggle('hidden', !open);
   renderMenu();
   renderEntries();
 }

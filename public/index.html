@@ -4,18 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Almorzeitor</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <header>
-    <h1>🥖 Almorzeitor</h1>
+    <h1 id="header-title">🥖 Almorzeitor</h1>
   </header>
 
   <main id="app">
-    <!-- Vista: No hay lista activa -->
-    <section id="view-no-list" class="view hidden">
-      <p class="empty-state">No hay ninguna lista de almuerzo activa.</p>
-      <button id="btn-show-create" class="btn btn-primary">Crear lista</button>
+    <!-- Vista: Landing (todas las listas) -->
+    <section id="view-landing" class="view hidden">
+      <div id="lists-container"></div>
+      <button id="btn-show-create" class="btn btn-primary">+ Crear lista</button>
 
       <div id="create-form" class="card hidden">
         <h2>Nueva lista</h2>
@@ -53,6 +53,10 @@
             </div>
           </div>
         </div>
+        <div class="form-group">
+          <label for="access-code">Código de acceso (opcional)</label>
+          <input type="text" id="access-code" placeholder="Dejar vacío para lista abierta">
+        </div>
         <button id="btn-create-list" class="btn btn-primary">Crear</button>
         <button id="btn-cancel-create" class="btn btn-secondary">Cancelar</button>
       </div>
@@ -61,7 +65,17 @@
     <!-- Vista: Lista activa -->
     <section id="view-list" class="view hidden">
       <div class="card list-header">
-        <h2 id="list-title"></h2>
+        <div class="list-header-top">
+          <h2 id="list-title"></h2>
+          <div class="list-header-actions">
+            <button id="btn-edit" class="btn-icon btn-edit" title="Editar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button id="btn-back" class="btn-icon" title="Volver">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            </button>
+          </div>
+        </div>
         <div class="list-meta">
           <span id="list-bar-name" class="badge"></span>
           <span id="list-lunch-info" class="badge"></span>
@@ -99,6 +113,7 @@
 
       <!-- Acciones -->
       <div class="card actions">
+        <button id="btn-share" class="btn btn-secondary">🔗 Compartir enlace</button>
         <button id="btn-whatsapp" class="btn btn-whatsapp">📱 Enviar pedido por WhatsApp</button>
         <button id="btn-copy" class="btn btn-secondary">📋 Copiar resumen</button>
         <button id="btn-delete-list" class="btn btn-danger">Cerrar lista</button>
@@ -106,8 +121,61 @@
     </section>
   </main>
 
+  <!-- Modal: Código de acceso -->
+  <div id="code-modal" class="modal hidden">
+    <div class="modal-content card">
+      <h3>🔒 Lista protegida</h3>
+      <p>Introduce el código de acceso para ver esta lista.</p>
+      <div class="form-group">
+        <input type="text" id="code-input" placeholder="Código">
+      </div>
+      <button id="btn-code-submit" class="btn btn-primary">Entrar</button>
+      <button id="btn-code-cancel" class="btn btn-secondary">Cancelar</button>
+      <p id="code-error" class="error-text hidden">Código incorrecto</p>
+    </div>
+  </div>
+
+  <!-- Modal: Editar lista -->
+  <div id="edit-modal" class="modal hidden">
+    <div class="modal-content card">
+      <h3>Editar lista</h3>
+      <div class="form-group">
+        <label for="edit-name">Nombre</label>
+        <input type="text" id="edit-name">
+      </div>
+      <div class="form-group">
+        <label for="edit-reservation">Reserva a nombre de</label>
+        <input type="text" id="edit-reservation">
+      </div>
+      <div class="form-group">
+        <label>Fecha y hora del almuerzo</label>
+        <div class="datetime-row">
+          <input type="date" id="edit-lunch-date">
+          <div class="time-inputs">
+            <input type="number" id="edit-lunch-hour" min="0" max="23">
+            <span>:</span>
+            <input type="number" id="edit-lunch-minute" min="0" max="59" step="5">
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Límite para apuntarse</label>
+        <div class="datetime-row">
+          <input type="date" id="edit-deadline-date">
+          <div class="time-inputs">
+            <input type="number" id="edit-deadline-hour" min="0" max="23">
+            <span>:</span>
+            <input type="number" id="edit-deadline-minute" min="0" max="59" step="5">
+          </div>
+        </div>
+      </div>
+      <button id="btn-edit-save" class="btn btn-primary">Guardar</button>
+      <button id="btn-edit-cancel" class="btn btn-secondary">Cancelar</button>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 
-  <script src="app.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>

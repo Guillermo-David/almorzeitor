@@ -23,9 +23,43 @@ function isListOpen(list) {
   return new Date() < new Date(list.deadline);
 }
 
+function publicListSummary(list) {
+  return {
+    id: list.id,
+    name: list.name,
+    barName: list.barName,
+    lunchDate: list.lunchDate,
+    lunchHour: list.lunchHour,
+    lunchMinute: list.lunchMinute,
+    deadline: list.deadline,
+    reservationName: list.reservationName || '',
+    hasCode: !!list.accessCode,
+    entryCount: list.entries.length,
+    open: isListOpen(list),
+  };
+}
+
+function checkAccessCode(list, req) {
+  if (!list.accessCode) return true;
+  const code = req.headers['x-access-code'] || '';
+  return code === list.accessCode;
+}
+
+// Auto-cleanup: remove lists 2h after lunch date/time
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, list] of lists) {
+    const lunchDateTime = new Date(list.lunchDate + 'T00:00:00');
+    lunchDateTime.setHours(list.lunchHour, list.lunchMinute, 0, 0);
+    const expiry = lunchDateTime.getTime() + 2 * 60 * 60 * 1000;
+    if (now > expiry) {
+      lists.delete(id);
+    }
+  }
+}, 60 * 1000);
+
 // --- API ---
 
-// Get config (bars, defaults)
 app.get('/api/config', (_req, res) => {
   res.json({
     bars: config.bars.map(b => ({ id: b.id, name: b.name, menu: b.menu })),
@@ -35,28 +69,44 @@ app.get('/api/config', (_req, res) => {
   });
 });
 
-// Get active list (the most recent one, if any)
-app.get('/api/list/active', (_req, res) => {
-  let active = null;
+// All active lists (public summaries)
+app.get('/api/lists', (_req, res) => {
+  const result = [];
   for (const list of lists.values()) {
-    if (!active || list.createdAt > active.createdAt) {
-      active = list;
-    }
+    result.push(publicListSummary(list));
   }
-  if (!active) return res.json(null);
-  res.json({ ...active, open: isListOpen(active) });
+  result.sort((a, b) => {
+    const da = new Date(a.lunchDate + 'T00:00:00');
+    const db = new Date(b.lunchDate + 'T00:00:00');
+    return da - db;
+  });
+  res.json(result);
 });
 
-// Get list by ID
+// Get list by ID (requires access code if protected)
 app.get('/api/list/:id', (req, res) => {
   const list = lists.get(req.params.id);
   if (!list) return res.status(404).json({ error: 'Lista no encontrada' });
-  res.json({ ...list, open: isListOpen(list) });
+  if (!checkAccessCode(list, req)) {
+    return res.status(403).json({ error: 'Código incorrecto', needsCode: true });
+  }
+  res.json({ ...list, open: isListOpen(list), hasCode: !!list.accessCode });
+});
+
+// Verify access code
+app.post('/api/list/:id/access', (req, res) => {
+  const list = lists.get(req.params.id);
+  if (!list) return res.status(404).json({ error: 'Lista no encontrada' });
+  const { code } = req.body;
+  if (list.accessCode && code !== list.accessCode) {
+    return res.status(403).json({ error: 'Código incorrecto' });
+  }
+  res.json({ ok: true });
 });
 
 // Create new list
 app.post('/api/list', (req, res) => {
-  const { name, barId, deadlineISO, lunchDate, lunchHour, lunchMinute, reservationName } = req.body;
+  const { name, barId, deadlineISO, lunchDate, lunchHour, lunchMinute, reservationName, accessCode } = req.body;
   const bar = getBar(barId || config.defaultBarId);
   if (!bar) return res.status(400).json({ error: 'Bar no encontrado' });
 
@@ -78,17 +128,42 @@ app.post('/api/list', (req, res) => {
     lunchHour: lunchHour ?? 10,
     lunchMinute: lunchMinute ?? 0,
     reservationName: reservationName || '',
+    accessCode: accessCode || null,
     entries: [],
     createdAt: Date.now(),
   };
 
   lists.set(id, list);
-  res.status(201).json({ ...list, open: isListOpen(list) });
+  res.status(201).json({ ...list, open: isListOpen(list), hasCode: !!list.accessCode });
+});
+
+// Update list
+app.put('/api/list/:id', (req, res) => {
+  const list = lists.get(req.params.id);
+  if (!list) return res.status(404).json({ error: 'Lista no encontrada' });
+  if (!checkAccessCode(list, req)) {
+    return res.status(403).json({ error: 'Código incorrecto', needsCode: true });
+  }
+  if (!isListOpen(list)) return res.status(403).json({ error: 'La lista está cerrada' });
+
+  const { name, reservationName, lunchDate, lunchHour, lunchMinute, deadlineISO } = req.body;
+  if (name !== undefined) list.name = name;
+  if (reservationName !== undefined) list.reservationName = reservationName;
+  if (lunchDate !== undefined) list.lunchDate = lunchDate;
+  if (lunchHour !== undefined) list.lunchHour = lunchHour;
+  if (lunchMinute !== undefined) list.lunchMinute = lunchMinute;
+  if (deadlineISO !== undefined) list.deadline = new Date(deadlineISO).toISOString();
+
+  res.json({ ...list, open: isListOpen(list), hasCode: !!list.accessCode });
 });
 
 // Delete list
 app.delete('/api/list/:id', (req, res) => {
-  if (!lists.has(req.params.id)) return res.status(404).json({ error: 'Lista no encontrada' });
+  const list = lists.get(req.params.id);
+  if (!list) return res.status(404).json({ error: 'Lista no encontrada' });
+  if (!checkAccessCode(list, req)) {
+    return res.status(403).json({ error: 'Código incorrecto', needsCode: true });
+  }
   lists.delete(req.params.id);
   res.json({ ok: true });
 });
@@ -97,6 +172,9 @@ app.delete('/api/list/:id', (req, res) => {
 app.post('/api/list/:id/entry', (req, res) => {
   const list = lists.get(req.params.id);
   if (!list) return res.status(404).json({ error: 'Lista no encontrada' });
+  if (!checkAccessCode(list, req)) {
+    return res.status(403).json({ error: 'Código incorrecto', needsCode: true });
+  }
   if (!isListOpen(list)) return res.status(403).json({ error: 'La lista está cerrada' });
 
   const { personName, itemId, customItem } = req.body;
@@ -115,24 +193,30 @@ app.post('/api/list/:id/entry', (req, res) => {
     list.entries.push(entry);
   }
 
-  res.json({ ...list, open: isListOpen(list) });
+  res.json({ ...list, open: isListOpen(list), hasCode: !!list.accessCode });
 });
 
 // Remove entry
 app.delete('/api/list/:id/entry/:personName', (req, res) => {
   const list = lists.get(req.params.id);
   if (!list) return res.status(404).json({ error: 'Lista no encontrada' });
+  if (!checkAccessCode(list, req)) {
+    return res.status(403).json({ error: 'Código incorrecto', needsCode: true });
+  }
   if (!isListOpen(list)) return res.status(403).json({ error: 'La lista está cerrada' });
 
   const name = decodeURIComponent(req.params.personName);
   list.entries = list.entries.filter(e => e.personName.toLowerCase() !== name.toLowerCase());
-  res.json({ ...list, open: isListOpen(list) });
+  res.json({ ...list, open: isListOpen(list), hasCode: !!list.accessCode });
 });
 
 // Generate WhatsApp message
 app.get('/api/list/:id/whatsapp', (req, res) => {
   const list = lists.get(req.params.id);
   if (!list) return res.status(404).json({ error: 'Lista no encontrada' });
+  if (!checkAccessCode(list, req)) {
+    return res.status(403).json({ error: 'Código incorrecto', needsCode: true });
+  }
 
   const bar = getBar(list.barId);
   const totalPeople = list.entries.length;
@@ -175,6 +259,11 @@ app.get('/api/list/:id/whatsapp', (req, res) => {
   const whatsappDirect = `whatsapp://send?phone=${list.barPhone}&text=${encodeURIComponent(message)}`;
 
   res.json({ message, whatsappUrl, whatsappDirect });
+});
+
+// SPA routing: serve index.html for /lista/:id
+app.get('/lista/:id', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(PORT, () => {
