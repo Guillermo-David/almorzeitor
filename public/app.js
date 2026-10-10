@@ -385,7 +385,7 @@ async function saveEdit() {
 
 async function deleteList() {
   if (!currentList) return;
-  if (!confirm('¿Cerrar esta lista? Se perderán los datos.')) return;
+  if (!await showConfirm('Eliminar lista', '¿Eliminar esta lista? Se perderán todos los datos.')) return;
   try {
     await api(`/api/list/${currentList.id}`, {
       method: 'DELETE',
@@ -435,6 +435,7 @@ async function addEntry() {
 
 async function removeEntry(name) {
   if (!currentList) return;
+  if (!await showConfirm('Eliminar persona', `¿Eliminar a ${name} de la lista?`)) return;
   try {
     currentList = await api(`/api/list/${currentList.id}/entry/${encodeURIComponent(name)}`, {
       method: 'DELETE',
@@ -482,6 +483,25 @@ function shareLink() {
   } else {
     navigator.clipboard.writeText(url).then(() => toast('Enlace copiado')).catch(() => toast('No se pudo copiar'));
   }
+}
+
+// --- Confirm modal ---
+function showConfirm(title, message) {
+  return new Promise(resolve => {
+    $('confirm-title').textContent = title;
+    $('confirm-message').textContent = message;
+    const modal = $('confirm-modal');
+    modal.classList.remove('hidden');
+    const yes = $('btn-confirm-yes');
+    const no = $('btn-confirm-no');
+    function cleanup() {
+      modal.classList.add('hidden');
+      yes.replaceWith(yes.cloneNode(true));
+      no.replaceWith(no.cloneNode(true));
+    }
+    yes.addEventListener('click', () => { cleanup(); resolve(true); });
+    no.addEventListener('click', () => { cleanup(); resolve(false); });
+  });
 }
 
 // --- Rendering ---

@@ -155,6 +155,13 @@ input:focus, select:focus {
   margin-top: 8px;
 }
 
+.btn-danger-filled {
+  background: var(--primary);
+  color: white;
+  width: 100%;
+}
+.btn-danger-filled:hover { background: var(--primary-dark); }
+
 .btn-whatsapp {
   background: var(--whatsapp);
   color: white;
